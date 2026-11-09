@@ -99,6 +99,16 @@ def test_chat_reports_generator_errors_as_event(client, generator):
     assert events[-1][0] == "done"
 
 
+def test_missing_api_key_gives_clear_error(monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    client = TestClient(create_app(Settings(_env_file=None)))
+    events = _events(client.post("/api/chat", json={"question": "Hallo?"}))
+    assert events[-2] == (
+        "error",
+        {"message": "Kein API-Key eingerichtet (ANTHROPIC_API_KEY fehlt)"},
+    )
+
+
 def test_chat_validates_question(client):
     assert client.post("/api/chat", json={"question": ""}).status_code == 422
 

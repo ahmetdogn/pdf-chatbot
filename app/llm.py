@@ -1,3 +1,5 @@
+import os
+
 import anthropic
 
 SYSTEM_PROMPT = """\
@@ -47,6 +49,8 @@ class ClaudeGenerator:
         self.max_tokens = max_tokens
 
     def stream(self, question, sources, history):
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise AnswerError("Kein API-Key eingerichtet (ANTHROPIC_API_KEY fehlt)")
         try:
             with self.client.beta.messages.stream(
                 model=self.model,
