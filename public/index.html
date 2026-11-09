@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>pdf-chat</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="layout">
@@ -27,6 +27,7 @@
       <div id="messages" class="messages">
         <div class="empty" id="empty">
           <p>Lade links ein PDF hoch und stell eine Frage dazu.</p>
+          <p class="hint">Deine PDFs werden nur in deinem Browser gespeichert, nicht auf dem Server.</p>
           <p class="hint">Klick auf <span class="cite static">1</span> zeigt die Stelle im PDF</p>
         </div>
       </div>
@@ -44,6 +45,6 @@
     </form>
   </dialog>
 
-  <script src="/static/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

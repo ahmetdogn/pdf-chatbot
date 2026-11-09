@@ -1,9 +1,68 @@
 const $ = (id) => document.getElementById(id);
+const TRANSFORMERS_URL = "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1";
+const MODEL = "Xenova/paraphrase-multilingual-MiniLM-L12-v2";
+const MAX_REQUEST_BYTES = 4 * 1024 * 1024; // vercel limit ist 4.5 mb
 const chatHistory = [];
 
-async function loadDocuments() {
-  const res = await fetch("/api/documents");
-  const docs = await res.json();
+// ---- embeddings im browser ----
+
+let extractorPromise = null;
+
+function getExtractor() {
+  if (!extractorPromise) {
+    // dynamisch laden, falls das cdn nicht geht läuft die app trotzdem (nur mit bm25)
+    extractorPromise = import(TRANSFORMERS_URL)
+      .then(({ pipeline }) => pipeline("feature-extraction", MODEL, { dtype: "q8" }))
+      .catch((err) => {
+        console.warn("embedding modell konnte nicht geladen werden", err);
+        return null;
+      });
+  }
+  return extractorPromise;
+}
+
+async function embed(texts, onProgress) {
+  const extractor = await getExtractor();
+  if (!extractor) return null;
+  const result = [];
+  for (let i = 0; i < texts.length; i += 16) {
+    const out = await extractor(texts.slice(i, i + 16), { pooling: "mean", normalize: true });
+    // auf 4 nachkommastellen runden, sonst wird der request zu groß
+    for (const vec of out.tolist()) result.push(vec.map((x) => Math.round(x * 1e4) / 1e4));
+    onProgress?.(Math.min(i + 16, texts.length), texts.length);
+  }
+  return result;
+}
+
+// ---- speicher (indexeddb) ----
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("pdf-chat", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("docs", { keyPath: "id" });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function db(mode, fn) {
+  const conn = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction("docs", mode);
+    const req = fn(tx.objectStore("docs"));
+    tx.oncomplete = () => resolve(req?.result);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+const getDocs = () => db("readonly", (s) => s.getAll());
+const saveDoc = (doc) => db("readwrite", (s) => s.put(doc));
+const deleteDoc = (id) => db("readwrite", (s) => s.delete(id));
+
+// ---- dokumente ----
+
+async function renderDocuments() {
+  const docs = await getDocs();
   const list = $("doc-list");
   list.innerHTML = "";
   if (!docs.length) {
@@ -18,32 +77,50 @@ async function loadDocuments() {
     li.querySelector(".name").title = doc.filename;
     li.querySelector("button").onclick = async () => {
       if (!confirm(`„${doc.filename}“ entfernen?`)) return;
-      await fetch(`/api/documents/${doc.id}`, { method: "DELETE" });
-      loadDocuments();
+      await deleteDoc(doc.id);
+      renderDocuments();
     };
     list.appendChild(li);
   }
 }
 
+function setStatus(text, isError = false) {
+  $("upload-status").className = isError ? "status error" : "status";
+  $("upload-status").textContent = text;
+}
+
 async function upload(files) {
-  const status = $("upload-status");
+  const existing = new Set((await getDocs()).map((d) => d.id));
   for (const file of files) {
-    status.className = "status";
-    status.textContent = `Lade ${file.name} hoch...`;
+    setStatus(`Lade ${file.name} hoch...`);
     const form = new FormData();
     form.append("file", file);
-    const res = await fetch("/api/documents", { method: "POST", body: form });
+    const res = await fetch("/api/parse", { method: "POST", body: form });
     const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      status.className = "status error";
-      status.textContent = `${file.name}: ${body.detail || "Upload fehlgeschlagen"}`;
+      setStatus(`${file.name}: ${body.detail || "Upload fehlgeschlagen"}`, true);
       return;
     }
-    status.textContent = body.duplicate
-      ? `${file.name} ist schon vorhanden.`
-      : `${file.name}: ${body.pages} Seiten, ${body.chunks} Abschnitte`;
+    if (existing.has(body.id)) {
+      setStatus(`${file.name} ist schon vorhanden.`);
+      continue;
+    }
+
+    setStatus("Lade Embedding-Modell (beim ersten Mal ca. 120 MB)...");
+    const vectors = await embed(
+      body.chunks.map((c) => c.text),
+      (done, total) => setStatus(`${file.name}: Embeddings ${done}/${total}`)
+    );
+    body.chunks.forEach((c, i) => (c.embedding = vectors ? vectors[i] : null));
+
+    await saveDoc({ id: body.id, filename: body.filename, pages: body.pages, chunks: body.chunks });
+    setStatus(
+      vectors
+        ? `${file.name}: ${body.pages} Seiten, ${body.chunks.length} Abschnitte`
+        : `${file.name} geladen, aber Modell nicht verfügbar - nur Stichwortsuche`
+    );
   }
-  loadDocuments();
+  renderDocuments();
 }
 
 const dropzone = $("dropzone");
@@ -55,6 +132,8 @@ $("file-input").onchange = (e) => upload(e.target.files);
   dropzone.addEventListener(t, (e) => { e.preventDefault(); dropzone.classList.remove("drag"); })
 );
 dropzone.addEventListener("drop", (e) => upload(e.dataTransfer.files));
+
+// ---- antworten anzeigen ----
 
 function escapeHtml(s) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -101,6 +180,25 @@ function addMessage(role, text = "") {
   return div;
 }
 
+// ---- chat ----
+
+async function sendChat(payload) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Demo-Password": localStorage.getItem("demo-password") || "",
+      },
+      body: payload,
+    });
+    if (res.status !== 401) return res;
+    const pw = prompt(attempt ? "Falsches Passwort, nochmal:" : "Demo-Passwort:");
+    if (pw === null) return res;
+    localStorage.setItem("demo-password", pw);
+  }
+}
+
 async function ask(question) {
   addMessage("user", question);
   const msg = addMessage("assistant");
@@ -108,20 +206,31 @@ async function ask(question) {
   let sources = [];
   let answer = "";
 
+  const fail = (text) => {
+    body.classList.remove("typing");
+    body.textContent = text;
+    msg.classList.add("error");
+  };
+
   msg.addEventListener("click", (e) => {
     const n = e.target.closest("[data-n]")?.dataset.n;
     if (n && sources[n - 1]) showSource(sources[n - 1]);
   });
 
-  const res = await fetch("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question, history: chatHistory }),
-  });
+  const docs = await getDocs();
+  const chunks = docs.flatMap((d) => d.chunks);
+  const hasVectors = chunks.length && chunks.every((c) => c.embedding);
+  const queryEmbedding = hasVectors ? (await embed([question]))?.[0] : null;
+
+  const payload = JSON.stringify({ question, query_embedding: queryEmbedding, chunks, history: chatHistory });
+  if (payload.length > MAX_REQUEST_BYTES) {
+    fail("Zu viele Dokumente auf einmal, bitte ein paar entfernen.");
+    return;
+  }
+
+  const res = await sendChat(payload);
   if (!res.ok) {
-    body.classList.remove("typing");
-    body.textContent = "Anfrage fehlgeschlagen.";
-    msg.classList.add("error");
+    fail(res.status === 401 ? "Ohne Passwort geht's leider nicht." : "Anfrage fehlgeschlagen.");
     return;
   }
 
@@ -154,6 +263,7 @@ async function ask(question) {
     }
   }
   body.classList.remove("typing");
+
   // nur quellen anzeigen die auch zitiert wurden
   const cited = new Set([...answer.matchAll(/\[(\d+)\]/g)].map((m) => m[1]));
   if (cited.size) {
@@ -182,4 +292,4 @@ textarea.addEventListener("input", () => {
   textarea.style.height = textarea.scrollHeight + "px";
 });
 
-loadDocuments();
+renderDocuments();
