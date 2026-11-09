@@ -2,6 +2,8 @@
 
 Ein kleines Projekt, mit dem man PDFs hochladen und Fragen dazu stellen kann. Die Antworten kommen von Claude, und hinter jeder Aussage steht die Quelle mit Seitenzahl. Wenn man auf die Quelle klickt, sieht man die Textstelle aus dem PDF.
 
+**Live Demo:** https://pdf-chatbot-ashen-pi.vercel.app
+
 ![Screenshot](docs/screenshot.png)
 
 ## Wie es funktioniert
