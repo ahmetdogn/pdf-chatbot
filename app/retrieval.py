@@ -1,3 +1,4 @@
+import math
 import re
 
 from rank_bm25 import BM25Okapi
@@ -22,6 +23,17 @@ def tokenize(text):
     return [t for t in re.findall(r"\w+", text.lower()) if len(t) > 1 and t not in STOPWORDS]
 
 
+class BM25(BM25Okapi):
+    # die normale okapi idf wird 0 oder negativ wenn ein wort in >= der hälfte der chunks
+    # vorkommt. bei kleinen pdfs sind dann genau die richtigen treffer weg.
+    # deshalb die idf von lucene, die ist immer positiv
+    def _calc_idf(self, nd):
+        n = self.corpus_size
+        self.idf = {}
+        for word, freq in nd.items():
+            self.idf[word] = math.log(1 + (n - freq + 0.5) / (freq + 0.5))
+
+
 def reciprocal_rank_fusion(rankings, k=60):
     scores = {}
     chunks = {}
@@ -44,7 +56,7 @@ class HybridRetriever:
         if not chunks:
             return []
         if self.bm25 is None or self.bm25_chunks is not chunks:
-            self.bm25 = BM25Okapi([tokenize(c.text) for c in chunks])
+            self.bm25 = BM25([tokenize(c.text) for c in chunks])
             self.bm25_chunks = chunks
         scores = self.bm25.get_scores(tokenize(query))
         top = sorted(range(len(chunks)), key=lambda i: scores[i], reverse=True)[:k]
