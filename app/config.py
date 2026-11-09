@@ -1,5 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,14 +10,16 @@ class Settings(BaseSettings):
     claude_effort: str = "low"
     claude_max_tokens: int = 8000
 
-    embedder: str = "fastembed"  # oder "hash" für tests
-    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    # wenn gesetzt muss man im frontend ein passwort eingeben bevor man chatten kann
+    demo_password: str = ""
 
-    data_dir: Path = Path("data")
     chunk_size: int = 900
     chunk_overlap: int = 150
     top_k: int = 6
-    max_upload_mb: int = 25
+    max_upload_mb: int = 4  # vercel erlaubt max 4.5 mb pro request
+
+    # nur für die evaluation, im frontend läuft das gleiche modell mit transformers.js
+    embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 @lru_cache

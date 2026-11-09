@@ -1,5 +1,5 @@
 # testet ob die suche die richtige seite findet (ohne claude, kostet also nix)
-# python -m eval.run_eval
+# python -m eval.run_eval              (braucht: pip install -e ".[eval]")
 # python -m eval.run_eval --embedder hash
 
 import argparse
@@ -12,17 +12,18 @@ from app.config import Settings
 from app.embeddings import build_embedder
 from app.pdf_loader import extract_pages
 from app.retrieval import HybridRetriever
-from app.store import VectorStore
 from eval.sample_content import FILENAME, write_pdf
 
 
-def evaluate(retriever, questions, k):
+def evaluate(retriever, embedder, questions, k):
     results = {}
     for mode in ["bm25", "vector", "hybrid"]:
         hits = 0
         rr = 0
         for q in questions:
-            pages = [s.chunk.page for s in retriever.search(q["question"], k=k, mode=mode)]
+            q_emb = embedder.embed([q["question"]])[0]
+            found = retriever.search(q["question"], k, mode=mode, query_embedding=q_emb)
+            pages = [s.chunk.page for s in found]
             if q["page"] in pages:
                 hits += 1
                 rr += 1 / (pages.index(q["page"]) + 1)
@@ -33,7 +34,7 @@ def evaluate(retriever, questions, k):
 def main():
     settings = Settings()
     parser = argparse.ArgumentParser()
-    parser.add_argument("--embedder", default=settings.embedder)
+    parser.add_argument("--embedder", default="fastembed")
     parser.add_argument("-k", type=int, default=3)
     args = parser.parse_args()
 
@@ -43,10 +44,12 @@ def main():
     with tempfile.TemporaryDirectory() as tmp:
         pdf = Path(tmp) / FILENAME
         write_pdf(pdf)
-        store = VectorStore(Path(tmp) / "chroma", embedder)
-        # kleinere chunks, sonst gibts pro seite nur einen und das ranking ist egal
-        store.add(chunk_pages(extract_pages(pdf.read_bytes()), "sample", FILENAME, 300, 50))
-        results = evaluate(HybridRetriever(store), questions, args.k)
+        pages = extract_pages(pdf.read_bytes())
+
+    # kleinere chunks, sonst gibts pro seite nur einen und das ranking ist egal
+    chunks = chunk_pages(pages, "sample", FILENAME, 300, 50)
+    retriever = HybridRetriever(chunks, embedder.embed([c.text for c in chunks]))
+    results = evaluate(retriever, embedder, questions, args.k)
 
     print(f"\n{len(questions)} Fragen, embedder={args.embedder}, k={args.k}\n")
     print(f"| Modus  | Hit@{args.k} | MRR  |")

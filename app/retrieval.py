@@ -1,6 +1,7 @@
 import math
 import re
 
+import numpy as np
 from rank_bm25 import BM25Okapi
 
 from app.models import ScoredChunk
@@ -46,29 +47,40 @@ def reciprocal_rank_fusion(rankings, k=60):
 
 
 class HybridRetriever:
-    def __init__(self, store):
-        self.store = store
-        self.bm25 = None
-        self.bm25_chunks = None
+    # alles im speicher, der server merkt sich nichts zwischen requests (wegen vercel)
+    def __init__(self, chunks, embeddings=None):
+        self.chunks = chunks
+        self.bm25 = BM25([tokenize(c.text) for c in chunks]) if chunks else None
+        self.vectors = None
+        if embeddings is not None and len(embeddings) == len(chunks) and chunks:
+            vectors = np.array(embeddings, dtype=np.float32)
+            norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+            self.vectors = vectors / np.maximum(norms, 1e-9)
 
     def bm25_search(self, query, k):
-        chunks = self.store.all_chunks()
-        if not chunks:
+        if not self.bm25:
             return []
-        if self.bm25 is None or self.bm25_chunks is not chunks:
-            self.bm25 = BM25([tokenize(c.text) for c in chunks])
-            self.bm25_chunks = chunks
         scores = self.bm25.get_scores(tokenize(query))
-        top = sorted(range(len(chunks)), key=lambda i: scores[i], reverse=True)[:k]
-        return [ScoredChunk(chunks[i], float(scores[i])) for i in top if scores[i] > 0]
+        top = np.argsort(-scores)[:k]
+        return [ScoredChunk(self.chunks[i], float(scores[i])) for i in top if scores[i] > 0]
 
-    def search(self, query, k=6, mode="hybrid"):
+    def vector_search(self, query_embedding, k):
+        if self.vectors is None or query_embedding is None:
+            return []
+        q = np.array(query_embedding, dtype=np.float32)
+        if q.shape[0] != self.vectors.shape[1]:
+            return []
+        scores = self.vectors @ (q / max(np.linalg.norm(q), 1e-9))
+        top = np.argsort(-scores)[:k]
+        return [ScoredChunk(self.chunks[i], float(scores[i])) for i in top]
+
+    def search(self, query, k=6, mode="hybrid", query_embedding=None):
         if mode == "bm25":
             return self.bm25_search(query, k)
         if mode == "vector":
-            return self.store.search(query, k)
+            return self.vector_search(query_embedding, k)
 
         n = max(k * 3, 20)
-        vector_hits = [s.chunk for s in self.store.search(query, n)]
+        vector_hits = [s.chunk for s in self.vector_search(query_embedding, n)]
         bm25_hits = [s.chunk for s in self.bm25_search(query, n)]
         return reciprocal_rank_fusion([vector_hits, bm25_hits])[:k]

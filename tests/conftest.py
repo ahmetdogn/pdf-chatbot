@@ -30,7 +30,11 @@ def generator():
 
 
 @pytest.fixture
-def client(tmp_path, generator):
-    settings = Settings(data_dir=tmp_path, embedder="hash", _env_file=None)
-    app = create_app(settings, embedder=HashEmbedder(), generator=generator)
-    return TestClient(app)
+def client(generator):
+    settings = Settings(_env_file=None)
+    return TestClient(create_app(settings, generator=generator))
+
+
+@pytest.fixture
+def embedder():
+    return HashEmbedder()
