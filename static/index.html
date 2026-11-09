@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pdf-chat</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h1>pdf-chat</h1>
+      <p class="tagline">Fragen zu deinen PDFs stellen</p>
+
+      <label id="dropzone" class="dropzone">
+        <input id="file-input" type="file" accept="application/pdf" multiple hidden>
+        <strong>PDF hochladen</strong>
+        <span>Klicken oder Dateien hierher ziehen</span>
+      </label>
+      <div id="upload-status" class="status" role="status"></div>
+
+      <h2>Dokumente</h2>
+      <ul id="doc-list" class="doc-list"></ul>
+    </aside>
+
+    <main class="chat">
+      <div id="messages" class="messages">
+        <div class="empty" id="empty">
+          <p>Lade links ein PDF hoch und stell eine Frage dazu.</p>
+          <p class="hint">Klick auf <span class="cite static">1</span> zeigt die Stelle im PDF</p>
+        </div>
+      </div>
+      <form id="chat-form" class="composer">
+        <textarea id="question" rows="1" placeholder="Frage stellen..." required></textarea>
+        <button type="submit" id="send">Senden</button>
+      </form>
+    </main>
+  </div>
+
+  <dialog id="source-dialog">
+    <form method="dialog">
+      <header><strong id="source-title"></strong><button aria-label="Schließen">✕</button></header>
+      <p id="source-text"></p>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
