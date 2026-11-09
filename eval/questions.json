@@ -1,0 +1,22 @@
+[
+  {"question": "Wie viele Urlaubstage bekomme ich im Jahr?", "page": 3},
+  {"question": "Bis wann muss ich meinen Resturlaub nehmen?", "page": 3},
+  {"question": "Ab wann brauche ich einen Krankenschein?", "page": 3},
+  {"question": "Wie lange ist die Kernarbeitszeit?", "page": 2},
+  {"question": "Wie oft darf ich von zu Hause arbeiten?", "page": 2},
+  {"question": "Gibt es Geld für meinen Schreibtisch im Homeoffice?", "page": 2},
+  {"question": "Wie viele Überstunden darf ich ansammeln?", "page": 2},
+  {"question": "Wie viel Geld gibt es für Fortbildungen?", "page": 4},
+  {"question": "Wo beantrage ich eine Schulung?", "page": 4},
+  {"question": "Darf ich bei Dienstreisen erste Klasse fahren?", "page": 5},
+  {"question": "Wie teuer darf ein Hotel in München sein?", "page": 5},
+  {"question": "Was bekomme ich pro Kilometer, wenn ich mit dem eigenen Auto fahre?", "page": 5},
+  {"question": "Wie lang muss mein Passwort sein?", "page": 6},
+  {"question": "Was mache ich mit einer Phishing-Mail?", "page": 6},
+  {"question": "Mein Laptop wurde gestohlen, was jetzt?", "page": 6},
+  {"question": "Wann wurde die Firma gegründet?", "page": 1},
+  {"question": "An welchen Standorten gibt es Büros?", "page": 1},
+  {"question": "Wen kontaktiere ich bei Fragen zum Handbuch?", "page": 1},
+  {"question": "Wie lange habe ich Zeit, eine Reisekostenabrechnung einzureichen?", "page": 5},
+  {"question": "Muss ich am 24. Dezember arbeiten?", "page": 3}
+]
